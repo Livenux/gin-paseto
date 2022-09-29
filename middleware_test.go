@@ -19,7 +19,7 @@ func TestMiddleware(t *testing.T) {
 	r := gin.Default()
 	key := randomString(64)
 	middleware := ParetoMiddleware{
-		Maker:           NewPasetoMaker(key),
+		Maker:           NewPasetoLocalMaker(key),
 		Expired:         time.Second * 5,
 		MaxRefresh:      time.Second * 10,
 		RefreshTokenURL: "/refresh",

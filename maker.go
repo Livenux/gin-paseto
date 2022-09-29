@@ -9,4 +9,6 @@ type Maker interface {
 	VerifyToken(token string) (*Claims, error)
 	// RefreshToken refresh token on Claims.MaxRefreshAt before
 	RefreshToken(claims *Claims, duration time.Duration) (token string, err error)
+	// RevokeToken expire the token
+	RevokeToken(claims *Claims) error
 }

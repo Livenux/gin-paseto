@@ -2,6 +2,7 @@ package ginpaseto
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,14 @@ type ParetoMiddleware struct {
 	MaxRefresh      time.Duration
 	RefreshTokenURL string
 	BaseLoginURL    string
+	LogoutURL       string
+	TokenHeadName   string
+	TokenLookup     string
+	CookieName      string
+	CookieSameSite  http.SameSite
+	SendCookie      bool
+	SecureCookie    bool
+	CookieHTTPOnly  bool
 }
 
 var (
@@ -31,7 +40,8 @@ type Response struct {
 }
 
 type TokenResponse struct {
-	Token string `json:"token"`
+	Expire time.Time `json:"expire"`
+	Token  string    `json:"token"`
 }
 
 // Authorization gin authorization middleware handler
@@ -61,7 +71,7 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 			if errors.Is(err, ErrTokenExpired) {
 				c.JSON(http.StatusUnauthorized, Response{
 					Code:    http.StatusUnauthorized,
-					Message: err.Error() + ", you can refresh it",
+					Message: err.Error() + ", please refresh token",
 					Href:    pm.RefreshTokenURL,
 				})
 				c.Abort()
@@ -78,6 +88,8 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// LoginHandler from gin context get login data to claim create token
 func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data any, err error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data, err := loginFunc(c)
@@ -92,7 +104,10 @@ func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data an
 		pm.Claims.Data = data
 
 		token, err := pm.Maker.CreateToken(pm.Claims)
+		// send cookie to client
+		pm.setCookie(c, token)
 		if err != nil {
+			log.Printf("Create paseto token error: %v", err)
 			c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,
 				Message: "an unexpected condition was encountered",
@@ -103,7 +118,9 @@ func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data an
 		c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
 			Message: "login successful",
-			Data:    TokenResponse{Token: token},
+			Data: TokenResponse{
+				Expire: pm.Claims.ExpiredAt,
+				Token:  token},
 		})
 
 	}
@@ -150,13 +167,92 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 			})
 		} else {
 			token, err := pm.Maker.RefreshToken(claims, pm.Expired)
+			pm.setCookie(c, token)
 			if err == nil {
 				c.JSON(http.StatusOK, Response{
 					Code:    http.StatusOK,
 					Message: "token is refreshed",
-					Data:    TokenResponse{Token: token}})
+					Data: TokenResponse{
+						Expire: pm.Claims.ExpiredAt,
+						Token:  token}})
 			}
 		}
+	}
+}
+
+func (pm *ParetoMiddleware) LogOut() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := pm.parseClaims(c)
+		if err == nil {
+			err := pm.Maker.RevokeToken(claims)
+			if err != nil {
+				log.Printf("revoke paseto token error: %v", err)
+				c.JSON(http.StatusInternalServerError, Response{
+					Code:    http.StatusInternalServerError,
+					Message: "an unexpected condition was encountered",
+				})
+				return
+			}
+			pm.revokeCookie(c)
+			c.JSON(http.StatusOK, Response{
+				Code:    http.StatusOK,
+				Message: "token is revoke",
+			})
+			return
+		}
+
+		if err != nil {
+			if errors.Is(err, ErrNoAuthorizationHeader) || errors.Is(err, ErrAuthorizationHeaderFormat) {
+				c.JSON(http.StatusForbidden, Response{
+					Code:    http.StatusForbidden,
+					Message: err.Error(),
+					Href:    pm.BaseLoginURL,
+				})
+				return
+			}
+			if errors.Is(err, ErrTokenMaxRefresh) {
+				c.JSON(http.StatusUnauthorized, Response{
+					Code:    http.StatusUnauthorized,
+					Message: err.Error() + ", please re-login",
+					Href:    pm.BaseLoginURL,
+				})
+				return
+			}
+		}
+
+	}
+}
+
+func (pm *ParetoMiddleware) setCookie(c *gin.Context, token string) {
+	if pm.SendCookie {
+		if pm.CookieSameSite != 0 {
+			c.SetSameSite(pm.CookieSameSite)
+		}
+		maxAge := int(pm.Claims.MaxRefreshAt.Unix() - pm.Claims.IssuedAt.Unix())
+
+		c.SetCookie(pm.CookieName,
+			token,
+			maxAge,
+			"/",
+			pm.Claims.Audience,
+			pm.SecureCookie,
+			pm.CookieHTTPOnly,
+		)
+	}
+}
+
+func (pm *ParetoMiddleware) revokeCookie(c *gin.Context) {
+	if pm.SendCookie {
+		if pm.CookieSameSite != 0 {
+			c.SetSameSite(pm.CookieSameSite)
+		}
+		c.SetCookie(pm.CookieName,
+			"",
+			-1,
+			"/",
+			pm.Claims.Audience,
+			pm.SendCookie,
+			pm.CookieHTTPOnly)
 	}
 }
 
