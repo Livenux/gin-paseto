@@ -10,12 +10,12 @@ import (
 )
 
 type ParetoMiddleware struct {
-	maker           Maker
-	claims          *Claims
-	expired         time.Duration
-	maxRefresh      time.Duration
-	refreshTokenURL string
-	baseLoginURL    string
+	Maker           Maker
+	Claims          *Claims
+	Expired         time.Duration
+	MaxRefresh      time.Duration
+	RefreshTokenURL string
+	BaseLoginURL    string
 }
 
 var (
@@ -43,7 +43,7 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 				c.JSON(http.StatusForbidden, Response{
 					Code:    http.StatusForbidden,
 					Message: err.Error(),
-					Href:    pm.baseLoginURL,
+					Href:    pm.BaseLoginURL,
 				})
 				c.Abort()
 				return
@@ -52,7 +52,7 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 				c.JSON(http.StatusUnauthorized, Response{
 					Code:    http.StatusUnauthorized,
 					Message: err.Error() + ", please re-login",
-					Href:    pm.baseLoginURL,
+					Href:    pm.BaseLoginURL,
 				})
 				c.Abort()
 				return
@@ -62,7 +62,7 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 				c.JSON(http.StatusUnauthorized, Response{
 					Code:    http.StatusUnauthorized,
 					Message: err.Error() + ", you can refresh it",
-					Href:    pm.refreshTokenURL,
+					Href:    pm.RefreshTokenURL,
 				})
 				c.Abort()
 				return
@@ -89,9 +89,9 @@ func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data an
 			c.Abort()
 			return
 		}
-		pm.claims.Data = data
+		pm.Claims.Data = data
 
-		token, err := pm.maker.CreateToken(pm.claims)
+		token, err := pm.Maker.CreateToken(pm.Claims)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,
@@ -119,7 +119,7 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 				c.JSON(http.StatusForbidden, Response{
 					Code:    http.StatusForbidden,
 					Message: err.Error(),
-					Href:    pm.baseLoginURL,
+					Href:    pm.BaseLoginURL,
 				})
 				return
 			}
@@ -127,13 +127,13 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 				c.JSON(http.StatusUnauthorized, Response{
 					Code:    http.StatusUnauthorized,
 					Message: err.Error() + ", please re-login",
-					Href:    pm.baseLoginURL,
+					Href:    pm.BaseLoginURL,
 				})
 				return
 			}
 
 			if errors.Is(err, ErrTokenExpired) {
-				token, err := pm.maker.RefreshToken(claims, pm.expired)
+				token, err := pm.Maker.RefreshToken(claims, pm.Expired)
 
 				if err == nil {
 					c.JSON(http.StatusOK, Response{
@@ -149,7 +149,7 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 				Message: "an unexpected condition was encountered",
 			})
 		} else {
-			token, err := pm.maker.RefreshToken(claims, pm.expired)
+			token, err := pm.Maker.RefreshToken(claims, pm.Expired)
 			if err == nil {
 				c.JSON(http.StatusOK, Response{
 					Code:    http.StatusOK,
@@ -180,5 +180,5 @@ func (pm *ParetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pm.maker.VerifyToken(token)
+	return pm.Maker.VerifyToken(token)
 }

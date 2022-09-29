@@ -19,21 +19,21 @@ func TestMiddleware(t *testing.T) {
 	r := gin.Default()
 	key := randomString(64)
 	middleware := ParetoMiddleware{
-		maker:           NewPasetoMaker(key),
-		expired:         time.Second * 5,
-		maxRefresh:      time.Second * 10,
-		refreshTokenURL: "/refresh",
-		baseLoginURL:    "/login/base",
+		Maker:           NewPasetoMaker(key),
+		Expired:         time.Second * 5,
+		MaxRefresh:      time.Second * 10,
+		RefreshTokenURL: "/refresh",
+		BaseLoginURL:    "/login/base",
 	}
-	middleware.claims = NewClaims(middleware.expired, middleware.maxRefresh, WithClaimsOption(
+	middleware.Claims = NewClaims(middleware.Expired, middleware.MaxRefresh, WithClaimsOption(
 		"testIssuer", "testUser", "testAud"))
-	r.POST(middleware.baseLoginURL, middleware.LoginHandler(loginHandler))
+	r.POST(middleware.BaseLoginURL, middleware.LoginHandler(loginHandler))
 	privateGroup := r.Group("/")
 	privateGroup.Use(middleware.Authorization())
 	privateGroup.GET("", func(c *gin.Context) {
 		c.String(http.StatusOK, "hello world")
 	})
-	privateGroup.GET(middleware.refreshTokenURL, middleware.RefreshToken())
+	privateGroup.GET(middleware.RefreshTokenURL, middleware.RefreshToken())
 
 	indexRequest, err := http.NewRequest("GET", "/", nil)
 	assert.NoError(t, err)
@@ -60,7 +60,7 @@ func TestMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusOK, indexRecorder.Code)
 	t.Logf("loginSuccess %s\n", indexRecorder.Body)
 
-	refreshRequest, err := http.NewRequest("GET", middleware.refreshTokenURL, nil)
+	refreshRequest, err := http.NewRequest("GET", middleware.RefreshTokenURL, nil)
 	refreshRequest.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	assert.NoError(t, err)
 	refreshRecord := httptest.NewRecorder()
