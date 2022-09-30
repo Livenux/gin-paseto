@@ -49,26 +49,10 @@ type TokenResponse struct {
 func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := pm.parseClaims(c)
-		if err != nil {
-			if errors.Is(err, ErrNoAuthorizationHeader) || errors.Is(err, ErrAuthorizationHeaderFormat) {
-				c.JSON(http.StatusForbidden, Response{
-					Code:    http.StatusForbidden,
-					Message: err.Error(),
-					Href:    pm.BaseLoginURL,
-				})
-				c.Abort()
-				return
-			}
-			if errors.Is(err, ErrTokenMaxRefresh) {
-				c.JSON(http.StatusUnauthorized, Response{
-					Code:    http.StatusUnauthorized,
-					Message: err.Error() + ", please re-login",
-					Href:    pm.BaseLoginURL,
-				})
-				c.Abort()
-				return
-			}
-
+		if err == nil {
+			c.Set("authData", claims.Data)
+			c.Next()
+		} else {
 			if errors.Is(err, ErrTokenExpired) {
 				c.JSON(http.StatusUnauthorized, Response{
 					Code:    http.StatusUnauthorized,
@@ -78,15 +62,10 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			c.JSON(http.StatusUnauthorized, Response{
-				Code:    http.StatusUnauthorized,
-				Message: err.Error(),
-			})
+			pm.checkTokenError(c, err)
 			c.Abort()
 			return
 		}
-		c.Set("authData", claims.Data)
-		c.Next()
 	}
 }
 
@@ -132,52 +111,26 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		claims, err := pm.parseClaims(c)
-		if err != nil {
-			if errors.Is(err, ErrNoAuthorizationHeader) || errors.Is(err, ErrAuthorizationHeaderFormat) {
-				c.JSON(http.StatusForbidden, Response{
-					Code:    http.StatusForbidden,
-					Message: err.Error(),
-					Href:    pm.BaseLoginURL,
-				})
-				return
-			}
-			if errors.Is(err, ErrTokenMaxRefresh) {
-				c.JSON(http.StatusUnauthorized, Response{
-					Code:    http.StatusUnauthorized,
-					Message: err.Error() + ", please re-login",
-					Href:    pm.BaseLoginURL,
-				})
-				return
-			}
-
-			if errors.Is(err, ErrTokenExpired) {
-				token, err := pm.Maker.RefreshToken(claims, pm.Expired)
-
-				if err == nil {
-					c.JSON(http.StatusOK, Response{
-						Code:    http.StatusOK,
-						Message: "token is refreshed",
-						Data:    TokenResponse{Token: token}})
-				}
-				return
-			}
-
-			c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "an unexpected condition was encountered",
-			})
-		} else {
+		if err == nil || errors.Is(err, ErrTokenExpired) {
 			token, err := pm.Maker.RefreshToken(claims, pm.Expired)
-			// set cookie
-			pm.setCookie(c, token)
+
 			if err == nil {
 				c.JSON(http.StatusOK, Response{
 					Code:    http.StatusOK,
 					Message: "token is refreshed",
-					Data: TokenResponse{
-						Expire: pm.Claims.ExpiredAt,
-						Token:  token}})
+					Data:    TokenResponse{Token: token}})
+				return
+			} else {
+				c.JSON(http.StatusInternalServerError, Response{
+					Code:    http.StatusInternalServerError,
+					Message: "an unexpected condition was encountered",
+				})
+				return
 			}
+
+		} else {
+			pm.checkTokenError(c, err)
+			return
 		}
 	}
 }
@@ -308,4 +261,31 @@ func (pm *ParetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
 		return nil, err
 	}
 	return pm.Maker.VerifyToken(token)
+}
+
+func (pm *ParetoMiddleware) checkTokenError(c *gin.Context, err error) {
+	switch err {
+	case ErrNoAuthorizationHeader, ErrAuthorizationHeaderFormat, ErrNoAuthorizationCookieSet:
+		c.JSON(http.StatusForbidden, Response{
+			Code:    http.StatusForbidden,
+			Message: err.Error(),
+			Href:    pm.BaseLoginURL,
+		})
+		return
+
+	case ErrTokenMaxRefresh:
+		c.JSON(http.StatusUnauthorized, Response{
+			Code:    http.StatusUnauthorized,
+			Message: err.Error() + ", please re-login",
+			Href:    pm.BaseLoginURL,
+		})
+		return
+
+	default:
+		c.JSON(http.StatusUnauthorized, Response{
+			Code:    http.StatusUnauthorized,
+			Message: err.Error(),
+		})
+		return
+	}
 }
