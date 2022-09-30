@@ -116,7 +116,7 @@ func ParseEdPrivateKeyBlock(key []byte) (ed25519.PrivateKey, error) {
 	return privateKey, nil
 }
 
-// ParseEdPublicKeyBlock parses  a pem.Block.Bytes Edwards curve public key
+// ParseEdPublicKeyBlock parses  pem.Block.Bytes Edwards curve public key
 func ParseEdPublicKeyBlock(key []byte) (ed25519.PublicKey, error) {
 	var err error
 	block := &pem.Block{

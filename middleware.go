@@ -19,7 +19,7 @@ type ParetoMiddleware struct {
 	BaseLoginURL    string
 	LogoutURL       string
 	TokenHeadName   string
-	TokenLookup     string
+	TokenLookup     map[string]string
 	CookieName      string
 	CookieSameSite  http.SameSite
 	SendCookie      bool
@@ -29,7 +29,8 @@ type ParetoMiddleware struct {
 
 var (
 	ErrNoAuthorizationHeader     = errors.New("no Authorization header or the Authorization header is empty")
-	ErrAuthorizationHeaderFormat = errors.New("incorrectly formatted authorization header")
+	ErrAuthorizationHeaderFormat = errors.New("incorrectly formatted Authorization header")
+	ErrNoAuthorizationCookieSet  = errors.New("no Authorization Cookie set or cookie value is empty")
 )
 
 type Response struct {
@@ -167,6 +168,7 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 			})
 		} else {
 			token, err := pm.Maker.RefreshToken(claims, pm.Expired)
+			// set cookie
 			pm.setCookie(c, token)
 			if err == nil {
 				c.JSON(http.StatusOK, Response{
@@ -241,6 +243,7 @@ func (pm *ParetoMiddleware) setCookie(c *gin.Context, token string) {
 	}
 }
 
+// revokeCookie Invalidate client cookie
 func (pm *ParetoMiddleware) revokeCookie(c *gin.Context) {
 	if pm.SendCookie {
 		if pm.CookieSameSite != 0 {
@@ -269,8 +272,36 @@ func (pm *ParetoMiddleware) extractBearerToken(header string) (string, error) {
 	return token[1], nil
 }
 
+// extractCookieToken from cookie get token string
+func (pm *ParetoMiddleware) extractCookieToken(cookie string) (string, error) {
+	if cookie == "" {
+		return "", ErrNoAuthorizationCookieSet
+	}
+	return cookie, nil
+
+}
+
 // parseClaims from gin http Authorization to Claims
 func (pm *ParetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
+	for k, v := range pm.TokenLookup {
+		switch k {
+		case "header":
+			header := c.Request.Header.Get(v)
+			token, err := pm.extractBearerToken(header)
+			if err != nil {
+				return nil, err
+			}
+			return pm.Maker.VerifyToken(token)
+		case "cookie":
+			cookie, err := c.Cookie(v)
+			if err != nil || cookie == "" {
+				return nil, ErrNoAuthorizationCookieSet
+			}
+			return pm.Maker.VerifyToken(cookie)
+		default:
+
+		}
+	}
 	header := c.Request.Header.Get("Authorization")
 	token, err := pm.extractBearerToken(header)
 	if err != nil {
