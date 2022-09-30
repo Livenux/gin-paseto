@@ -100,3 +100,45 @@ func randomString(length int) string {
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)[:length]
 }
+
+func TestParetoMiddleware_checkTokenError(t *testing.T) {
+	r := gin.Default()
+
+	key := randomString(64)
+	authMiddleWare := ParetoMiddleware{
+		Maker:           NewPasetoLocalMaker(key),
+		Expired:         time.Second * 2,
+		MaxRefresh:      time.Second * 5,
+		RefreshTokenURL: "/auth/refresh",
+		BaseLoginURL:    "/auth/login",
+		LogoutURL:       "/auth/logout",
+		TokenHeadName:   "Authorization",
+		CookieName:      "auth",
+		CookieSameSite:  1,
+		SendCookie:      false,
+		SecureCookie:    false,
+		CookieHTTPOnly:  false,
+	}
+
+	authMiddleWare.TokenLookup = map[string]string{
+		"header": authMiddleWare.TokenHeadName,
+		"cookie": authMiddleWare.CookieName,
+	}
+
+	authMiddleWare.Claims = NewClaims(authMiddleWare.Expired, authMiddleWare.MaxRefresh)
+
+	r.Use(authMiddleWare.Authorization())
+
+	r.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "hello world")
+	})
+
+	req, err := http.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Logf("error new request: %v", err)
+	}
+	noRecorder := httptest.NewRecorder()
+	r.ServeHTTP(noRecorder, req)
+	assert.Equal(t, http.StatusForbidden, noRecorder.Code)
+	t.Logf("noRecoder response: %s", noRecorder.Body)
+}
