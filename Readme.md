@@ -54,8 +54,11 @@ import (
 func main() {
 	// hex string key
 	key := "707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f"
-	authMiddleware := ginpaseto.ParetoMiddleware{
-		Maker:           ginpaseto.NewPasetoLocalMaker(key),
+	maker := ginpaseto.NewPasetoLocalMaker(key)
+	authMiddleware := ginpaseto.PasetoMiddleware{
+		Issuer:       "api.example.com",
+		Subject:      "authToken",
+		Audience:     ".example.com",
 		Expired:         time.Hour * 2,  // token expired
 		MaxRefresh:      time.Hour * 24, // token max age
 		RefreshTokenURL: "/auth/refresh",
@@ -68,13 +71,10 @@ func main() {
 		SecureCookie:    false,
 		CookieHTTPOnly:  false,
 	}
+	// Completion property
+	authMiddleware.Init(maker)
 
-	authMiddleware.TokenLookup = map[string]string{
-		"header": authMiddleware.TokenHeadName,
-		"cookie": authMiddleware.CookieName,
-	}
 
-	authMiddleware.Claims = ginpaseto.NewClaims(authMiddleware.Expired, authMiddleware.MaxRefresh)
 
 	r := gin.Default()
 
