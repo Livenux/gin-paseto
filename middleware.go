@@ -10,7 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ParetoMiddleware struct {
+type PasetoMiddleware struct {
+	Issuer          string `json:"issuer,omitempty"`
+	Subject         string `json:"subject,omitempty"`
+	Audience        string `json:"audience,omitempty"`
 	Maker           Maker
 	Claims          *Claims
 	Expired         time.Duration
@@ -45,8 +48,15 @@ type TokenResponse struct {
 	Token  string    `json:"token"`
 }
 
+// Init parse PasetoMiddleware attributes to claims
+func (pm *PasetoMiddleware) Init(maker Maker) {
+	pm.Maker = maker
+	pm.TokenLookup = map[string]string{"header": pm.TokenHeadName, "cookie": pm.CookieName}
+	pm.Claims = NewClaims(pm.Expired, pm.MaxRefresh, WithClaimsOption(pm.Issuer, pm.Subject, pm.Audience))
+}
+
 // Authorization gin authorization middleware handler
-func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
+func (pm *PasetoMiddleware) Authorization() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := pm.parseClaims(c)
 		if err == nil {
@@ -70,7 +80,7 @@ func (pm *ParetoMiddleware) Authorization() gin.HandlerFunc {
 }
 
 // LoginHandler from gin context get login data to claim create token
-func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data any, err error)) gin.HandlerFunc {
+func (pm *PasetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data any, err error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data, err := loginFunc(c)
 		if err != nil {
@@ -107,7 +117,7 @@ func (pm *ParetoMiddleware) LoginHandler(loginFunc func(c *gin.Context) (data an
 }
 
 // RefreshToken refresh token before max refresh time
-func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
+func (pm *PasetoMiddleware) RefreshToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		claims, err := pm.parseClaims(c)
@@ -135,7 +145,7 @@ func (pm *ParetoMiddleware) RefreshToken() gin.HandlerFunc {
 	}
 }
 
-func (pm *ParetoMiddleware) LogOut() gin.HandlerFunc {
+func (pm *PasetoMiddleware) LogOut() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := pm.parseClaims(c)
 		if err == nil {
@@ -178,7 +188,7 @@ func (pm *ParetoMiddleware) LogOut() gin.HandlerFunc {
 	}
 }
 
-func (pm *ParetoMiddleware) setCookie(c *gin.Context, token string) {
+func (pm *PasetoMiddleware) setCookie(c *gin.Context, token string) {
 	if pm.SendCookie {
 		if pm.CookieSameSite != 0 {
 			c.SetSameSite(pm.CookieSameSite)
@@ -197,7 +207,7 @@ func (pm *ParetoMiddleware) setCookie(c *gin.Context, token string) {
 }
 
 // revokeCookie Invalidate client cookie
-func (pm *ParetoMiddleware) revokeCookie(c *gin.Context) {
+func (pm *PasetoMiddleware) revokeCookie(c *gin.Context) {
 	if pm.SendCookie {
 		if pm.CookieSameSite != 0 {
 			c.SetSameSite(pm.CookieSameSite)
@@ -213,7 +223,7 @@ func (pm *ParetoMiddleware) revokeCookie(c *gin.Context) {
 }
 
 // extractBearToken from header string get token string
-func (pm *ParetoMiddleware) extractBearerToken(header string) (string, error) {
+func (pm *PasetoMiddleware) extractBearerToken(header string) (string, error) {
 	if header == "" {
 		return "", ErrNoAuthorizationHeader
 	}
@@ -226,7 +236,7 @@ func (pm *ParetoMiddleware) extractBearerToken(header string) (string, error) {
 }
 
 // extractCookieToken from cookie get token string
-func (pm *ParetoMiddleware) extractCookieToken(cookie string) (string, error) {
+func (pm *PasetoMiddleware) extractCookieToken(cookie string) (string, error) {
 	if cookie == "" {
 		return "", ErrNoAuthorizationCookieSet
 	}
@@ -235,7 +245,7 @@ func (pm *ParetoMiddleware) extractCookieToken(cookie string) (string, error) {
 }
 
 // parseClaims from gin http Authorization to Claims
-func (pm *ParetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
+func (pm *PasetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
 	for k, v := range pm.TokenLookup {
 		switch k {
 		case "header":
@@ -263,7 +273,7 @@ func (pm *ParetoMiddleware) parseClaims(c *gin.Context) (*Claims, error) {
 	return pm.Maker.VerifyToken(token)
 }
 
-func (pm *ParetoMiddleware) checkTokenError(c *gin.Context, err error) {
+func (pm *PasetoMiddleware) checkTokenError(c *gin.Context, err error) {
 	switch err {
 	case ErrNoAuthorizationHeader, ErrAuthorizationHeaderFormat, ErrNoAuthorizationCookieSet:
 		c.JSON(http.StatusForbidden, Response{

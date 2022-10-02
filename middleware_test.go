@@ -18,7 +18,7 @@ import (
 func TestMiddleware(t *testing.T) {
 	r := gin.Default()
 	key := randomString(64)
-	middleware := ParetoMiddleware{
+	middleware := PasetoMiddleware{
 		Maker:           NewPasetoLocalMaker(key),
 		Expired:         time.Second * 5,
 		MaxRefresh:      time.Second * 10,
@@ -105,7 +105,7 @@ func TestParetoMiddleware_checkTokenError(t *testing.T) {
 	r := gin.Default()
 
 	key := randomString(64)
-	authMiddleWare := ParetoMiddleware{
+	authMiddleWare := PasetoMiddleware{
 		Maker:           NewPasetoLocalMaker(key),
 		Expired:         time.Second * 2,
 		MaxRefresh:      time.Second * 5,
